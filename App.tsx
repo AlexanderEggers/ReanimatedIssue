@@ -1,57 +1,85 @@
-import React, {useCallback} from 'react';
-import {Button, View, StyleSheet, Text} from 'react-native';
+import React, {useEffect, useState} from 'react';
 import Animated, {
   useSharedValue,
-  withSpring,
+  useAnimatedProps,
+  Easing,
   runOnJS,
-  useAnimatedStyle,
+  withTiming,
 } from 'react-native-reanimated';
+import LottieView from 'lottie-react-native';
 
-export default function App() {
-  const scale = useSharedValue(1);
-  const [finished, setFinished] = React.useState(false);
+export function useStartupAnimation() {
+  const [hasLoadingFinished, setHasLoadingFinished] = useState<boolean>(false);
+  const [hasEntryAnimationFinished, setHasEntryAnimationFinished] =
+    useState<boolean>(false);
+  const [hasExitAnimationFinished, setHasExitAnimationFinished] =
+    useState<boolean>(false);
 
-  const finishTransition = useCallback(
-    (resolve: (value: void | PromiseLike<void>) => void) => {
-      resolve();
-    },
-    [],
-  );
+  const isUnmounting = hasLoadingFinished && hasEntryAnimationFinished;
 
-  const handlePress = () => {
-    new Promise(resolve => {
-      scale.value = withSpring(2, {}, () => {
-        runOnJS(finishTransition)(resolve);
-      });
-    }).then(() => {
-      // do nothing
-    });
-  };
+  const animationProgressController = useSharedValue(0);
 
-  const animatedStyle = useAnimatedStyle(() => ({
-    transform: [{scale: scale.value}],
+  const animatedProps = useAnimatedProps(() => ({
+    progress: animationProgressController.value,
   }));
 
-  return (
-    <View style={styles.container}>
-      <Animated.View style={[styles.box, animatedStyle]} />
-      <Button onPress={handlePress} title="Click me" disabled={finished} />
-      {finished && <Text>Finished! 🎉</Text>}
-    </View>
-  );
+  useEffect(() => {
+    setTimeout(() => {
+      setHasLoadingFinished(true);
+    }, 10_000);
+  }, []);
+
+  useEffect(() => {
+    if (hasExitAnimationFinished) {
+      console.log('FINISHED ANIMATION');
+    }
+  }, [hasExitAnimationFinished]);
+
+  useEffect(() => {
+    animationProgressController.value = withTiming(
+      0.61,
+      {
+        duration: 1500,
+        easing: Easing.linear,
+      },
+      hasFinished =>
+        hasFinished && runOnJS(setHasEntryAnimationFinished)(hasFinished),
+    );
+  }, [animationProgressController, setHasEntryAnimationFinished]);
+
+  useEffect(() => {
+    if (isUnmounting) {
+      animationProgressController.value = withTiming(
+        1,
+        {
+          duration: 750,
+          easing: Easing.linear,
+        },
+        hasFinished =>
+          hasFinished && runOnJS(setHasExitAnimationFinished)(hasFinished),
+      );
+    }
+  }, [animationProgressController, isUnmounting, setHasExitAnimationFinished]);
+
+  return {
+    animatedProps,
+    isUnmounting,
+    setHasEntryAnimationFinished,
+  };
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    alignItems: 'center',
-  },
-  box: {
-    height: 100,
-    width: 100,
-    backgroundColor: '#b58df1',
-    borderRadius: 20,
-    marginVertical: 64,
-    alignSelf: 'center',
-  },
-});
+const AnimatedLottieView = Animated.createAnimatedComponent(LottieView);
+
+export default function App() {
+  const {animatedProps} = useStartupAnimation();
+
+  return (
+    <AnimatedLottieView
+      animatedProps={animatedProps}
+      source={require('./LottieLogo1.json')}
+      resizeMode={'cover'}
+      autoPlay={false}
+      loop={false}
+    />
+  );
+}
